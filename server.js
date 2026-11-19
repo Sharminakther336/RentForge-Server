@@ -4,6 +4,7 @@ const cors = require("cors");
 require("dotenv").config();
 
 const { connectDB } = require("./config/db");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
@@ -16,6 +17,9 @@ app.use(
 );
 
 app.use(express.json());
+
+// Authentication Routes
+app.use("/api/auth", authRoutes);
 
 // Test API
 app.get("/", (req, res) => {
