@@ -6,6 +6,7 @@ const {
   getMyEquipment,
   updateEquipment,
   deleteEquipment,
+  getAllEquipment,
 } = require("../controllers/equipmentController");
 
 const {
@@ -15,7 +16,10 @@ const {
 
 const router = express.Router();
 
-// All equipment routes require Owner authentication
+
+router.get("/", getAllEquipment);
+
+// Protected routes: Owner authentication required
 router.use(verifyToken, verifyOwner);
 
 // Add equipment
@@ -31,3 +35,4 @@ router.patch("/:id", updateEquipment);
 router.delete("/:id", deleteEquipment);
 
 module.exports = router;
+

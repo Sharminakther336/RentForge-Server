@@ -13,7 +13,9 @@ const CATEGORIES = [
 
 const RENTAL_TYPES = ["Daily", "Weekly", "Monthly"];
 
-// Add new equipment
+// ============================================
+// 1. ADD NEW EQUIPMENT
+// ============================================
 const addEquipment = async (req, res) => {
   try {
     const {
@@ -119,7 +121,8 @@ const addEquipment = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Equipment submitted successfully. Waiting for admin approval.",
+      message:
+        "Equipment submitted successfully. Waiting for admin approval.",
       equipment: {
         ...newEquipment,
         _id: result.insertedId,
@@ -135,7 +138,9 @@ const addEquipment = async (req, res) => {
   }
 };
 
-// Get all equipment belonging to the logged-in owner
+// ============================================
+// 2. GET OWNER'S EQUIPMENT
+// ============================================
 const getMyEquipment = async (req, res) => {
   try {
     const db = getDB();
@@ -163,7 +168,9 @@ const getMyEquipment = async (req, res) => {
   }
 };
 
-// Update equipment belonging to the logged-in owner
+// ============================================
+// 3. UPDATE EQUIPMENT
+// ============================================
 const updateEquipment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -268,7 +275,8 @@ const updateEquipment = async (req, res) => {
     if (result.matchedCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Equipment not found or you do not own this equipment.",
+        message:
+          "Equipment not found or you do not own this equipment.",
       });
     }
 
@@ -286,7 +294,9 @@ const updateEquipment = async (req, res) => {
   }
 };
 
-// Delete equipment belonging to the logged-in owner
+// ============================================
+// 4. DELETE EQUIPMENT
+// ============================================
 const deleteEquipment = async (req, res) => {
   try {
     const { id } = req.params;
@@ -308,7 +318,8 @@ const deleteEquipment = async (req, res) => {
     if (result.deletedCount === 0) {
       return res.status(404).json({
         success: false,
-        message: "Equipment not found or you do not own this equipment.",
+        message:
+          "Equipment not found or you do not own this equipment.",
       });
     }
 
@@ -326,9 +337,183 @@ const deleteEquipment = async (req, res) => {
   }
 };
 
+// ============================================
+// 5. GET ALL APPROVED EQUIPMENT
+// SEARCH, FILTER AND SORT
+// ============================================
+const getAllEquipment = async (req, res) => {
+  try {
+    const db = getDB();
+    const filter = {
+      status: "approved",
+    };
+
+    const {
+      search,
+      category,
+      rentalType,
+      minPrice,
+      maxPrice,
+      availability,
+      sort = "recent",
+    } = req.query;
+
+    // Search by equipment name or location
+    if (typeof search === "string" && search.trim()) {
+      const safeSearch = search
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+      filter.$or = [
+        {
+          name: {
+            $regex: safeSearch,
+            $options: "i",
+          },
+        },
+        {
+          location: {
+            $regex: safeSearch,
+            $options: "i",
+          },
+        },
+      ];
+    }
+
+    // Category filter
+    if (category) {
+      if (!CATEGORIES.includes(category)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid equipment category.",
+        });
+      }
+
+      filter.category = category;
+    }
+
+    // Rental type filter
+    if (rentalType) {
+      if (!RENTAL_TYPES.includes(rentalType)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid rental type.",
+        });
+      }
+
+      filter.rentalType = rentalType;
+    }
+
+    // Price range filter
+    const priceFilter = {};
+
+    if (minPrice !== undefined && minPrice !== "") {
+      const min = Number(minPrice);
+
+      if (!Number.isFinite(min) || min < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid minimum price.",
+        });
+      }
+
+      priceFilter.$gte = min;
+    }
+
+    if (maxPrice !== undefined && maxPrice !== "") {
+      const max = Number(maxPrice);
+
+      if (!Number.isFinite(max) || max < 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid maximum price.",
+        });
+      }
+
+      priceFilter.$lte = max;
+    }
+
+    if (
+      priceFilter.$gte !== undefined &&
+      priceFilter.$lte !== undefined &&
+      priceFilter.$gte > priceFilter.$lte
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Minimum price cannot exceed maximum price.",
+      });
+    }
+
+    if (Object.keys(priceFilter).length > 0) {
+      filter.rentalPrice = priceFilter;
+    }
+
+    // Availability filter
+    if (availability === "available") {
+      filter.availableQuantity = {
+        $gt: 0,
+      };
+    } else if (availability === "unavailable") {
+      filter.availableQuantity = {
+        $lte: 0,
+      };
+    } else if (availability && availability !== "all") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Availability must be available, unavailable or all.",
+      });
+    }
+
+    // Sorting options
+    const sortOptions = {
+      recent: {
+        createdAt: -1,
+      },
+      "price-low-high": {
+        rentalPrice: 1,
+      },
+      "price-high-low": {
+        rentalPrice: -1,
+      },
+    };
+
+    if (!sortOptions[sort]) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid sorting option.",
+      });
+    }
+
+    const equipmentCollection = db.collection("equipment");
+
+    const equipment = await equipmentCollection
+      .find(filter)
+      .sort(sortOptions[sort])
+      .toArray();
+
+    return res.status(200).json({
+      success: true,
+      total: equipment.length,
+      equipment,
+    });
+  } catch (error) {
+    console.error("Get all equipment error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve equipment.",
+    });
+  }
+};
+
+// ============================================
+// EXPORT ALL CONTROLLERS
+// ============================================
 module.exports = {
   addEquipment,
   getMyEquipment,
   updateEquipment,
   deleteEquipment,
+  getAllEquipment,
 };
