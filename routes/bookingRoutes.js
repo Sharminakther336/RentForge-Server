@@ -4,22 +4,51 @@ const express = require("express");
 const {
   createBooking,
   getMyBookings,
+  getOwnerBookings,
 } = require("../controllers/bookingController");
 
 const {
   verifyToken,
   verifyRenter,
+  verifyOwner,
 } = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// All booking routes require Customer authentication
-router.use(verifyToken, verifyRenter);
 
-// Create booking request
-router.post("/", createBooking);
+// ============================================
+// CUSTOMER ROUTES
+// ============================================
+
+// Create booking intent
+router.post(
+  "/",
+  verifyToken,
+  verifyRenter,
+  createBooking
+);
 
 // Get customer's rental history
-router.get("/my-bookings", getMyBookings);
+router.get(
+  "/my-bookings",
+  verifyToken,
+  verifyRenter,
+  getMyBookings
+);
+
+
+// ============================================
+// OWNER ROUTES
+// ============================================
+
+// Get owner's rental bookings
+router.get(
+  "/owner-bookings",
+  verifyToken,
+  verifyOwner,
+  getOwnerBookings
+);
+
 
 module.exports = router;
+

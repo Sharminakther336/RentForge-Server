@@ -1,4 +1,3 @@
-
 const { ObjectId } = require("mongodb");
 const { getDB } = require("../config/db");
 
@@ -34,6 +33,7 @@ const createBooking = async (req, res) => {
       });
     }
 
+    // Validate equipment ID
     if (!ObjectId.isValid(equipmentId)) {
       return res.status(400).json({
         success: false,
@@ -149,21 +149,27 @@ const createBooking = async (req, res) => {
     }
 
     // Check existing confirmed bookings
-    const activeBookings = await db.collection("bookings").find({
-      equipmentId: new ObjectId(equipmentId),
-      bookingStatus: { $ne: "cancelled" },
-      rentalStartDate: { $lt: endDate },
-      rentalEndDate: { $gt: startDate },
-    }).toArray();
+    const activeBookings = await db
+      .collection("bookings")
+      .find({
+        equipmentId: new ObjectId(equipmentId),
+        bookingStatus: { $ne: "cancelled" },
+        rentalStartDate: { $lt: endDate },
+        rentalEndDate: { $gt: startDate },
+      })
+      .toArray();
 
     // Check other active payment intents
-    const activeIntents = await db.collection("bookingIntents").find({
-      equipmentId: new ObjectId(equipmentId),
-      status: "awaiting_payment",
-      expiresAt: { $gt: now },
-      rentalStartDate: { $lt: endDate },
-      rentalEndDate: { $gt: startDate },
-    }).toArray();
+    const activeIntents = await db
+      .collection("bookingIntents")
+      .find({
+        equipmentId: new ObjectId(equipmentId),
+        status: "awaiting_payment",
+        expiresAt: { $gt: now },
+        rentalStartDate: { $lt: endDate },
+        rentalEndDate: { $gt: startDate },
+      })
+      .toArray();
 
     const bookedQuantity = activeBookings.reduce(
       (total, booking) => total + booking.requiredQuantity,
@@ -194,25 +200,33 @@ const createBooking = async (req, res) => {
     const totalAmount =
       unitPrice * rentalUnits * quantity;
 
-    // Create a temporary booking intent.
-    // The actual booking record will be created after successful payment.
+    // Create temporary booking intent
+    // Actual booking will be created after successful payment
     const bookingIntent = {
       equipmentId: new ObjectId(equipmentId),
       customerId: new ObjectId(req.user.id),
       ownerId: equipment.ownerId,
+
       equipmentName: equipment.name,
+
       rentalStartDate: startDate,
       rentalEndDate: endDate,
+
       totalDays,
       rentalUnits,
       rentalType: equipment.rentalType,
+
       requiredQuantity: quantity,
+
       unitPrice,
       totalAmount,
+
       contactNumber: contactNumber.trim(),
       deliveryAddress: deliveryAddress.trim(),
       additionalNotes: additionalNotes || "",
+
       status: "awaiting_payment",
+
       createdAt: now,
       expiresAt: new Date(now.getTime() + 15 * 60 * 1000),
     };
@@ -223,18 +237,26 @@ const createBooking = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Booking details calculated successfully. Proceed to payment.",
+      message:
+        "Booking details calculated successfully. Proceed to payment.",
+
       bookingIntent: {
         id: result.insertedId.toString(),
+
         equipmentName: equipment.name,
+
         rentalStartDate: startDate,
         rentalEndDate: endDate,
+
         totalDays,
         rentalUnits,
         rentalType: equipment.rentalType,
+
         requiredQuantity: quantity,
+
         unitPrice,
         totalAmount,
+
         status: "awaiting_payment",
         expiresAt: bookingIntent.expiresAt,
       },
@@ -279,7 +301,77 @@ const getMyBookings = async (req, res) => {
   }
 };
 
+// ============================================
+// 3. GET OWNER'S RENTALS
+// ============================================
+const getOwnerBookings = async (req, res) => {
+  try {
+    const db = getDB();
+
+    const ownerId = new ObjectId(req.user.id);
+    const now = new Date();
+
+    // Get confirmed bookings and active booking intents
+    const [bookings, bookingIntents] = await Promise.all([
+      db
+        .collection("bookings")
+        .find({
+          ownerId,
+        })
+        .sort({ createdAt: -1 })
+        .toArray(),
+
+      db
+        .collection("bookingIntents")
+        .find({
+          ownerId,
+          status: "awaiting_payment",
+          expiresAt: { $gt: now },
+        })
+        .sort({ createdAt: -1 })
+        .toArray(),
+    ]);
+
+    // Combine both results
+    const allBookings = [
+      ...bookings.map((booking) => ({
+        ...booking,
+        recordType: "booking",
+      })),
+
+      ...bookingIntents.map((intent) => ({
+        ...intent,
+        recordType: "bookingIntent",
+      })),
+    ];
+
+    // Sort by creation date
+    allBookings.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime()
+    );
+
+    return res.status(200).json({
+      success: true,
+      total: allBookings.length,
+      bookings: allBookings,
+    });
+  } catch (error) {
+    console.error("Get owner bookings error:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve owner rentals.",
+    });
+  }
+};
+
+// ============================================
+// 4. EXPORT CONTROLLERS
+// ============================================
 module.exports = {
   createBooking,
   getMyBookings,
+  getOwnerBookings,
 };
