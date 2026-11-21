@@ -4,16 +4,31 @@ const express = require("express");
 const {
   getMyProfile,
   updateMyProfile,
+  getAllUsers,
+  updateUserRole,
 } = require("../controllers/userController");
 
-const { verifyToken } = require("../middleware/authMiddleware");
+const {
+  verifyToken,
+  verifyAdmin,
+} = require("../middleware/authMiddleware");
 
 const router = express.Router();
 
-// Get logged-in user's profile
+// Logged-in user's profile
 router.get("/me", verifyToken, getMyProfile);
-
-// Update logged-in user's profile
 router.patch("/me", verifyToken, updateMyProfile);
 
+// Admin: Get all users
+router.get("/admin/all", verifyToken, verifyAdmin, getAllUsers);
+
+// Admin: Update user role
+router.patch(
+  "/admin/:userId/role",
+  verifyToken,
+  verifyAdmin,
+  updateUserRole
+);
+
 module.exports = router;
+

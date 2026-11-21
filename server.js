@@ -13,23 +13,57 @@ const bookingRoutes = require("./routes/bookingRoutes");
 
 const app = express();
 
-// Middleware
-app.use(
-  cors({
-    origin: process.env.CLIENT_URL || "http://localhost:3000",
-    credentials: true,
-  })
-);
+// ========================================
+// CORS Configuration
+// ========================================
 
+const configuredOrigins = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((url) => url.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
+const allowedOrigins = [
+  ...new Set([
+    ...configuredOrigins,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+  ]),
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("CORS blocked origin:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+// Parse JSON
 app.use(express.json());
 
+// ========================================
 // API Routes
+// ========================================
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/equipment", equipmentRoutes);
 app.use("/api/bookings", bookingRoutes);
 
+// ========================================
 // Home / Server Test API
+// ========================================
+
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
@@ -37,7 +71,10 @@ app.get("/", (req, res) => {
   });
 });
 
+// ========================================
 // Not Found API
+// ========================================
+
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -45,7 +82,28 @@ app.use((req, res) => {
   });
 });
 
+// ========================================
+// Error Handler
+// ========================================
+
+app.use((error, req, res, next) => {
+  console.error("Server Error:", error.message);
+
+  res.status(
+    error.message === "Not allowed by CORS" ? 403 : 500
+  ).json({
+    success: false,
+    message:
+      error.message === "Not allowed by CORS"
+        ? "This frontend origin is not allowed."
+        : "Internal server error.",
+  });
+});
+
+// ========================================
 // Server Configuration
+// ========================================
+
 const PORT = process.env.PORT || 5000;
 
 // Connect MongoDB and Start Server
@@ -55,6 +113,7 @@ const startServer = async () => {
 
     app.listen(PORT, () => {
       console.log(`RentForge Server running on port ${PORT}`);
+      console.log("Allowed Frontend Origins:", allowedOrigins);
     });
   } catch (error) {
     console.error("Server startup failed:", error.message);
@@ -63,3 +122,4 @@ const startServer = async () => {
 };
 
 startServer();
+
